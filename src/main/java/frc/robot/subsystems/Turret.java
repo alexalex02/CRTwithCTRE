@@ -40,10 +40,10 @@ import yams.units.CRTAbsoluteEncoder;
 import yams.units.CRTAbsoluteEncoderConfig;
 
 /**
- * Turret that uses YAMS EasyCRT
+ * Turret that uses YAMS CRT
  */
 public class Turret extends SubsystemBase{
-  /** Dashboard toggle path to manually rerun CRT seeding. */
+  /** Manually rerun CRT seeding. */
   private static final String RERUN_SEED = "Turret/CRT/RerunSeed";
 
   private final TalonFX turretMotor;
@@ -151,7 +151,6 @@ public class Turret extends SubsystemBase{
 
   /**
    * Forces a CRT reseed attempt
-   * Drops a timestamp and re-runs the seeding pipeline.
    */
   public void rerunCrtSeed() {
     rotorSeededFromAbs = false;
@@ -178,7 +177,7 @@ public class Turret extends SubsystemBase{
 
   /**
    * Tries to solve turret position via CRT and seed the relative encoder with the result.
-   * Reads both CANCoder absolutes, runs the solver, updates the SmartMotorController encoder,
+   * Reads both CANCoder values, runs the solver, updates the SmartMotorController encoder,
    * and publishes CRT status to the dashboard.
    */
   private void attemptRotorSeedFromCANCoders() {
@@ -226,7 +225,7 @@ public class Turret extends SubsystemBase{
   }
 
   /**
-   * Reads both absolute encoders and returns their rotations plus a status string.
+   * Reads both absolute encoders and returns their rotations plus a status.
    */
   private AbsSensorRead readAbsSensors() {
     boolean haveDevices = cancoderA != null && cancoderB != null;
