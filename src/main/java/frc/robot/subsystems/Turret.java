@@ -55,8 +55,8 @@ public class Turret extends SubsystemBase{
   private final Pivot turret;
   private final CANcoder cancoderA;
   private final CANcoder cancoderB;
-  private final StatusSignal<Angle> absPositionASignal;
-  private final StatusSignal<Angle> absPositionBSignal;
+  private final StatusSignal<Angle> absPosition1Signal;
+  private final StatusSignal<Angle> absPosition2Signal;
   private final CRTAbsoluteEncoderConfig crtConfig;
 
   private boolean rotorSeededFromAbs = false;
@@ -80,8 +80,8 @@ public class Turret extends SubsystemBase{
     cancoderConfigurationB.MagnetSensor.MagnetOffset = -0.112548828125;
     cancoderB.getConfigurator().apply(cancoderConfigurationB);
 
-    absPositionASignal = cancoderA.getAbsolutePosition();
-    absPositionBSignal = cancoderB.getAbsolutePosition();
+    absPosition1Signal = cancoderA.getAbsolutePosition();
+    absPosition2Signal = cancoderB.getAbsolutePosition();
 
     motorTelemetryConfig =
         new SmartMotorControllerTelemetryConfig()
@@ -215,9 +215,19 @@ public class Turret extends SubsystemBase{
     rotorSeededFromAbs = true;
     lastSeededTurretDeg = solvedAngleValue.in(Degrees);
     lastSeedError = solver.getLastErrorRotations();
+    double currentTalonDeg = motor.getMechanismPosition().in(Degrees);
+    double talonDeltaDeg = currentTalonDeg - lastSeededTurretDeg;
+    double encoder2Ratio = crtConfig.getEncoder2RotationsPerMechanismRotation();
+    double expectedMechanismErrDeg =
+        Double.isFinite(encoder2Ratio) && Math.abs(encoder2Ratio) > 1e-12
+            ? (lastSeedError / encoder2Ratio) * 360.0
+            : Double.NaN;
     SmartDashboard.putBoolean("Turret/CRT/SolutionFound", true);
     SmartDashboard.putNumber("Turret/CRT/SeededTurretDeg", lastSeededTurretDeg);
     SmartDashboard.putNumber("Turret/CRT/MatchErrorRot", lastSeedError);
+    SmartDashboard.putNumber("Turret/CRT/TalonAfterSeedDeg", currentTalonDeg);
+    SmartDashboard.putNumber("Turret/CRT/TalonMinusSeedDeg", talonDeltaDeg);
+    SmartDashboard.putNumber("Turret/CRT/ExpectedDeltaDegFromMatchError", expectedMechanismErrDeg);
 
     lastSeedStatus = "OK";
     SmartDashboard.putString("Turret/CRT/SeedStatus", lastSeedStatus);
@@ -230,12 +240,12 @@ public class Turret extends SubsystemBase{
   private AbsSensorRead readAbsSensors() {
     boolean haveDevices = cancoderA != null && cancoderB != null;
     if (haveDevices) {
-      var status = BaseStatusSignal.refreshAll(absPositionASignal, absPositionBSignal);
+      var status = BaseStatusSignal.refreshAll(absPosition1Signal, absPosition2Signal);
       if (status.isOK()) {
         return new AbsSensorRead(
             true,
-            absPositionASignal.getValue().in(Rotations),
-            absPositionBSignal.getValue().in(Rotations),
+            absPosition1Signal.getValue().in(Rotations),
+            absPosition2Signal.getValue().in(Rotations),
             status.toString());
       }
       return new AbsSensorRead(false, Double.NaN, Double.NaN, status.toString());
@@ -249,12 +259,20 @@ public class Turret extends SubsystemBase{
    */
   private CRTAbsoluteEncoderConfig buildCrtConfig() {
     return new CRTAbsoluteEncoderConfig(
-            absPositionASignal::getValue,
-            absPositionBSignal::getValue)
-        .withCommonDriveGear(90/10, 50, 33, 34)
+            absPosition1Signal::getValue,
+            absPosition2Signal::getValue)
+        .withCommonDriveGear(
+          9, 
+          50, 
+          33, 
+          34)
         .withMechanismRange(Rotations.of(0.0), Rotations.of(2))
-        .withMatchTolerance(Rotations.of(0.01));
-        //.withCrtGearRecommendationConstraints(1.2, 15, 60, 40);
+        .withMatchTolerance(Rotations.of(0.005))
+        .withCrtGearRecommendationConstraints(
+          1.2, 
+          15, 
+          60, 
+          40);
   }
 
   /**
