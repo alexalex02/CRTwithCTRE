@@ -36,8 +36,8 @@ import yams.motorcontrollers.SmartMotorControllerConfig.MotorMode;
 import yams.motorcontrollers.SmartMotorControllerConfig.TelemetryVerbosity;
 import yams.motorcontrollers.remote.TalonFXWrapper;
 import yams.telemetry.SmartMotorControllerTelemetryConfig;
-import yams.units.CRTAbsoluteEncoder;
-import yams.units.CRTAbsoluteEncoderConfig;
+import yams.units.EasyCRT;
+import yams.units.EasyCRTConfig;
 
 /**
  * Turret that uses YAMS CRT
@@ -57,7 +57,7 @@ public class Turret extends SubsystemBase{
   private final CANcoder cancoderB;
   private final StatusSignal<Angle> absPosition1Signal;
   private final StatusSignal<Angle> absPosition2Signal;
-  private final CRTAbsoluteEncoderConfig crtConfig;
+  private final EasyCRTConfig easyCRTConfig;
 
   private boolean rotorSeededFromAbs = false;
   private double lastSeededTurretDeg = Double.NaN;
@@ -73,18 +73,19 @@ public class Turret extends SubsystemBase{
     cancoderB = new CANcoder(3, "rio");
 
     var cancoderConfigurationA = new CANcoderConfiguration();
-    cancoderConfigurationA.MagnetSensor.MagnetOffset = -0.01513671875;
+    //cancoderConfigurationA.MagnetSensor.MagnetOffset = 0.43505859375;
     cancoderA.getConfigurator().apply(cancoderConfigurationA);
+    
 
     var cancoderConfigurationB = new CANcoderConfiguration();
-    cancoderConfigurationB.MagnetSensor.MagnetOffset = -0.112548828125;
+    //cancoderConfigurationB.MagnetSensor.MagnetOffset = 0.317626953125;
     cancoderB.getConfigurator().apply(cancoderConfigurationB);
 
     absPosition1Signal = cancoderA.getAbsolutePosition();
     absPosition2Signal = cancoderB.getAbsolutePosition();
 
     motorTelemetryConfig =
-        new SmartMotorControllerTelemetryConfig()
+        new SmartMotorControllerTelemetryConfig() 
             .withMechanismPosition()
             .withRotorPosition()
             .withRotorVelocity()
@@ -131,7 +132,7 @@ public class Turret extends SubsystemBase{
             .withMOI(0.2);
 
     turret = new Pivot(pivotConfig);
-    crtConfig = buildCrtConfig();
+    easyCRTConfig = buildEasyCrtConfig();
     logCrtConfigTelemetry();
     SmartDashboard.putBoolean(RERUN_SEED, false);
   }
@@ -195,7 +196,7 @@ public class Turret extends SubsystemBase{
     lastAbsA = absA;
     lastAbsB = absB;
 
-    var solver = new CRTAbsoluteEncoder(crtConfig);
+    var solver = new EasyCRT(easyCRTConfig);
     var solvedAngle = solver.getAngleOptional();
 
     SmartDashboard.putNumber("Turret/CRT/AbsA", absA);
@@ -217,7 +218,7 @@ public class Turret extends SubsystemBase{
     lastSeedError = solver.getLastErrorRotations();
     double currentTalonDeg = motor.getMechanismPosition().in(Degrees);
     double talonDeltaDeg = currentTalonDeg - lastSeededTurretDeg;
-    double encoder2Ratio = crtConfig.getEncoder2RotationsPerMechanismRotation();
+    double encoder2Ratio = easyCRTConfig.getEncoder2RotationsPerMechanismRotation();
     double expectedMechanismErrDeg =
         Double.isFinite(encoder2Ratio) && Math.abs(encoder2Ratio) > 1e-12
             ? (lastSeedError / encoder2Ratio) * 360.0
@@ -257,57 +258,68 @@ public class Turret extends SubsystemBase{
   /**
    * Build the CRT config
    */
-  private CRTAbsoluteEncoderConfig buildCrtConfig() {
-    return new CRTAbsoluteEncoderConfig(
+  private EasyCRTConfig buildEasyCrtConfig() {
+    return new EasyCRTConfig(
             absPosition1Signal::getValue,
             absPosition2Signal::getValue)
-        .withCommonDriveGear(
-          9, 
-          50, 
-          33, 
-          34)
-        .withMechanismRange(Rotations.of(0.0), Rotations.of(2))
-        .withMatchTolerance(Rotations.of(0.005))
-        .withCrtGearRecommendationConstraints(
-          1.2, 
-          15, 
-          60, 
-          40);
+        // .withCommonDriveGear(
+        //   9, 
+        //   50, 
+        //   33, 
+        //   34)
+        .withAbsoluteEncoder1GearingStages(
+          90, 10, 50, 33)
+        .withAbsoluteEncoder2GearingStages(
+          90, 10, 50, 34)
+        .withAbsoluteEncoderOffsets(
+          Rotations.of(-0.086670),
+          Rotations.of(-0.802002)
+        )
+        .withAbsoluteEncoderInversions(
+          false,
+          false
+        )
+        .withMechanismRange(Rotations.of(-1), Rotations.of(1))
+        .withMatchTolerance(Rotations.of(0.02));
+        // .withCrtGearRecommendationConstraints(
+        //   1.2, 
+        //   15, 
+        //   60, 
+        //   40);
   }
 
   /**
    * Publish CRT config-derived values for debugging coverage/ratios.
    */
   private void logCrtConfigTelemetry() {
-    double mechanismRangeRot =
-        crtConfig.getMaxMechanismRotations() - crtConfig.getMinMechanismRotations();
+    double mechanismRangeRot = easyCRTConfig.getMechanismRange().in(Rotations);
+    double uniqueCoverageRot =
+        easyCRTConfig.getUniqueCoverage().map(angle -> angle.in(Rotations)).orElse(Double.NaN);
     SmartDashboard.putNumber(
-        "Turret/CRT/Config/RatioA", crtConfig.getEncoder1RotationsPerMechanismRotation());
+        "Turret/CRT/Config/RatioA", easyCRTConfig.getEncoder1RotationsPerMechanismRotation());
     SmartDashboard.putNumber(
-        "Turret/CRT/Config/RatioB", crtConfig.getEncoder2RotationsPerMechanismRotation());
+        "Turret/CRT/Config/RatioB", easyCRTConfig.getEncoder2RotationsPerMechanismRotation());
     SmartDashboard.putNumber(
         "Turret/CRT/Config/UniqueCoverageRot",
-        crtConfig.getUniqueCoverageRotations().orElse(Double.NaN));
+        uniqueCoverageRot);
     SmartDashboard.putBoolean(
         "Turret/CRT/Config/CoverageSatisfiesRange",
-        crtConfig
-            .getUniqueCoverageRotations()
-            .map(coverage -> coverage >= mechanismRangeRot)
-            .orElse(false));
+        easyCRTConfig
+            .coverageSatisfiesRange());
     SmartDashboard.putNumber("Turret/CRT/Config/RequiredRangeRot", mechanismRangeRot);
 
-    var configPair = crtConfig.getRecommendedCrtGearPair();
+    var configPair = easyCRTConfig.getRecommendedCrtGearPair();
     SmartDashboard.putBoolean("Turret/CRT/Config/RecommendedPairFound", configPair.isPresent());
     if (configPair.isPresent()) {
       var pair = configPair.get();
       SmartDashboard.putNumber("Turret/CRT/Config/Reccomender/RecommendedGearA", pair.gearA());
       SmartDashboard.putNumber("Turret/CRT/Config/Reccomender/RecommendedGearB", pair.gearB());
       SmartDashboard.putNumber(
-          "Turret/CRT/Config/Reccomender/RecommendedCoverageRot", pair.coverageRot());
+          "Turret/CRT/Config/Reccomender/RecommendedCoverageRot", pair.coverage().in(Rotations));
       SmartDashboard.putNumber("Turret/CRT/Config/Reccomender/RecommendedLcm", pair.lcm());
       SmartDashboard.putBoolean(
           "Turret/CRT/Config/Reccomender/RecommendedCoprime",
-          CRTAbsoluteEncoderConfig.isCoprime(pair.gearA(), pair.gearB()));
+          EasyCRTConfig.isCoprime(pair.gearA(), pair.gearB()));
       SmartDashboard.putNumber(
           "Turret/CRT/Config/Reccomender/RecommendedIterations", pair.theoreticalIterations());
     }
