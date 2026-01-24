@@ -5,9 +5,7 @@ import static edu.wpi.first.units.Units.Degrees;
 import static edu.wpi.first.units.Units.DegreesPerSecond;
 import static edu.wpi.first.units.Units.DegreesPerSecondPerSecond;
 import static edu.wpi.first.units.Units.Meters;
-import static edu.wpi.first.units.Units.Radians;
 import static edu.wpi.first.units.Units.Rotations;
-import static edu.wpi.first.units.Units.Second;
 
 import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.StatusSignal;
@@ -24,7 +22,6 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
-import yams.gearing.GearBox;
 import yams.gearing.MechanismGearing;
 import yams.mechanisms.config.MechanismPositionConfig;
 import yams.mechanisms.config.PivotConfig;
@@ -151,7 +148,7 @@ public class Turret extends SubsystemBase{
   }
 
   /**
-   * Forces a CRT reseed attempt
+   * CRT reseed attempt
    */
   public void rerunCrtSeed() {
     rotorSeededFromAbs = false;
@@ -178,7 +175,7 @@ public class Turret extends SubsystemBase{
 
   /**
    * Tries to solve turret position via CRT and seed the relative encoder with the result.
-   * Reads both CANCoder values, runs the solver, updates the SmartMotorController encoder,
+   * Reads both CANCoder values, runs the solver, updates the SmartMotorController,
    * and publishes CRT status to the dashboard.
    */
   private void attemptRotorSeedFromCANCoders() {
@@ -216,19 +213,10 @@ public class Turret extends SubsystemBase{
     rotorSeededFromAbs = true;
     lastSeededTurretDeg = solvedAngleValue.in(Degrees);
     lastSeedError = solver.getLastErrorRotations();
-    double currentTalonDeg = motor.getMechanismPosition().in(Degrees);
-    double talonDeltaDeg = currentTalonDeg - lastSeededTurretDeg;
-    double encoder2Ratio = easyCRTConfig.getEncoder2RotationsPerMechanismRotation();
-    double expectedMechanismErrDeg =
-        Double.isFinite(encoder2Ratio) && Math.abs(encoder2Ratio) > 1e-12
-            ? (lastSeedError / encoder2Ratio) * 360.0
-            : Double.NaN;
+
     SmartDashboard.putBoolean("Turret/CRT/SolutionFound", true);
     SmartDashboard.putNumber("Turret/CRT/SeededTurretDeg", lastSeededTurretDeg);
     SmartDashboard.putNumber("Turret/CRT/MatchErrorRot", lastSeedError);
-    SmartDashboard.putNumber("Turret/CRT/TalonAfterSeedDeg", currentTalonDeg);
-    SmartDashboard.putNumber("Turret/CRT/TalonMinusSeedDeg", talonDeltaDeg);
-    SmartDashboard.putNumber("Turret/CRT/ExpectedDeltaDegFromMatchError", expectedMechanismErrDeg);
 
     lastSeedStatus = "OK";
     SmartDashboard.putString("Turret/CRT/SeedStatus", lastSeedStatus);
@@ -262,15 +250,11 @@ public class Turret extends SubsystemBase{
     return new EasyCRTConfig(
             absPosition1Signal::getValue,
             absPosition2Signal::getValue)
-        // .withCommonDriveGear(
-        //   9, 
-        //   50, 
-        //   33, 
-        //   34)
-        .withAbsoluteEncoder1GearingStages(
-          90, 10, 50, 33)
-        .withAbsoluteEncoder2GearingStages(
-          90, 10, 50, 34)
+        .withCommonDriveGear(
+          9, 
+          50, 
+          33, 
+          34)
         .withAbsoluteEncoderOffsets(
           Rotations.of(-0.086670),
           Rotations.of(-0.802002)
@@ -279,13 +263,13 @@ public class Turret extends SubsystemBase{
           false,
           false
         )
-        .withMechanismRange(Rotations.of(-1), Rotations.of(1))
-        .withMatchTolerance(Rotations.of(0.02));
-        // .withCrtGearRecommendationConstraints(
-        //   1.2, 
-        //   15, 
-        //   60, 
-        //   40);
+        .withMechanismRange(Rotations.of(-1.25), Rotations.of(1.25))
+        .withMatchTolerance(Rotations.of(0.02))
+        .withCrtGearRecommendationConstraints(
+          1.2, 
+          15, 
+          60, 
+          40);
   }
 
   /**
